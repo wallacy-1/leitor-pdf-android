@@ -1,25 +1,81 @@
 {
   "expo": {
-    "name": "leitor-pdf",
+    "name": "Leitor PDF",
     "slug": "leitor-pdf",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#1976d2",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.leitorpdf.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "content",
+              "mimeType": "application/pdf"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "application/pdf"
+            },
+            {
+              "scheme": "https",
+              "mimeType": "application/pdf"
+            }
+          ]
+        }
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.VIBRATE"
+      ],
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#1976d2",
+          "dark": {
+            "backgroundColor": "#0d47a1"
+          }
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "# react-native-pdf: acesso por reflection a PDFView.pdfFile / PdfFile (patch de links)\n-keep class com.github.barteksc.pdfviewer.PDFView { *; }\n-keep class com.github.barteksc.pdfviewer.PdfFile { *; }\n-keep class org.wonday.pdf.** { *; }\n# pdfium (JNI)\n-keep class io.legere.pdfiumandroid.** { *; }\n# react-native-pdf-thumbnail (módulo legado por nome)\n-keep class org.songsterq.pdfthumbnail.** { *; }\n# ML Kit\n-keep class com.google.mlkit.** { *; }\n-keep class com.rnmlkit.** { *; }"
+          }
+        }
+      ]
+    ]
   }
 }
