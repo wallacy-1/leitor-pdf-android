@@ -1,0 +1,175 @@
+diff --git a/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java b/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java
+index 03c60d5..a0a1576 100644
+--- a/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java
++++ b/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java
+@@ -157,11 +157,16 @@ public class PdfManager extends SimpleViewManager<PdfView> implements RNPDFPdfVi
+         pdfView.setSinglePage(singlePage);
+     }
+ 
++    @ReactProp(name = "nightMode")
++    public void setNightMode(PdfView pdfView, boolean nightMode) {
++        pdfView.setNightMode(nightMode);
++    }
++
+     // It seems funny, but this method is called through delegate on Paper, but on Fabric we need to
+     // use `receiveCommand` method and call this one there
+     @Override
+     public void setNativePage(PdfView view, int page) {
+-        view.setPage(page);
++        view.setPageAnimated(page);
+     }
+ 
+     @Override
+diff --git a/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfView.java b/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfView.java
+index c3d3245..003ae02 100644
+--- a/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfView.java
++++ b/node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/PdfView.java
+@@ -83,6 +83,7 @@ public class PdfView extends PDFView implements OnPageChangeListener,OnLoadCompl
+     private boolean pageSnap = false;
+     private FitPolicy fitPolicy = FitPolicy.WIDTH;
+     private boolean singlePage = false;
++    private boolean nightMode = false;
+     private boolean scrollEnabled = true;
+     private boolean enableRTL = false;
+ 
+@@ -250,7 +251,41 @@ public class PdfView extends PDFView implements OnPageChangeListener,OnLoadCompl
+         //Constants.Pinch.MAXIMUM_ZOOM = this.maxScale;
+ 
+         WritableMap event = Arguments.createMap();
+-        event.putString("message", "pageSingleTap|"+page+"|"+e.getX()+"|"+e.getY());
++        // Coordenadas normalizadas (0..1) dentro da página tocada, para detecção de links no JS.
++        String extra = "";
++        try {
++            // PdfFile é package-private na lib: acesso só por reflection.
++            java.lang.reflect.Field f = com.github.barteksc.pdfviewer.PDFView.class.getDeclaredField("pdfFile");
++            f.setAccessible(true);
++            Object pdfFile = f.get(this);
++            if (pdfFile != null) {
++                Class<?> pf = pdfFile.getClass();
++                java.lang.reflect.Method mPageAt = pf.getMethod("getPageAtOffset", float.class, float.class);
++                java.lang.reflect.Method mSize = pf.getMethod("getScaledPageSize", int.class, float.class);
++                java.lang.reflect.Method mOff = pf.getMethod("getPageOffset", int.class, float.class);
++                java.lang.reflect.Method mSec = pf.getMethod("getSecondaryPageOffset", int.class, float.class);
++                for (java.lang.reflect.Method m : new java.lang.reflect.Method[]{mPageAt, mSize, mOff, mSec}) m.setAccessible(true);
++                float zoom = getZoom();
++                float mappedX = -getCurrentXOffset() + e.getX();
++                float mappedY = -getCurrentYOffset() + e.getY();
++                int idx = (Integer) mPageAt.invoke(pdfFile, isSwipeVertical() ? mappedY : mappedX, zoom);
++                android.util.SizeF size = (android.util.SizeF) mSize.invoke(pdfFile, idx, zoom);
++                float pageX, pageY;
++                if (isSwipeVertical()) {
++                    pageX = (Float) mSec.invoke(pdfFile, idx, zoom);
++                    pageY = (Float) mOff.invoke(pdfFile, idx, zoom);
++                } else {
++                    pageY = (Float) mSec.invoke(pdfFile, idx, zoom);
++                    pageX = (Float) mOff.invoke(pdfFile, idx, zoom);
++                }
++                float nx = (mappedX - pageX) / size.getWidth();
++                float ny = (mappedY - pageY) / size.getHeight();
++                extra = "|" + nx + "|" + ny + "|" + (idx + 1);
++            }
++        } catch (Exception ex) {
++            Log.w("PdfView", "tap mapping failed: " + ex);
++        }
++        event.putString("message", "pageSingleTap|"+page+"|"+e.getX()+"|"+e.getY()+extra);
+ 
+         ThemedReactContext context = (ThemedReactContext) getContext();
+         EventDispatcher dispatcher = UIManagerHelper.getEventDispatcherForReactTag(context, getId());
+@@ -384,6 +419,7 @@ public class PdfView extends PDFView implements OnPageChangeListener,OnLoadCompl
+                 .enableSwipe(!this.singlePage && this.scrollEnabled)
+                 .enableDoubletap(!this.singlePage && this.enableDoubleTapZoom)
+                 .enableAnnotationRendering(this.enableAnnotationRendering)
++                .nightMode(this.nightMode)
+                 .linkHandler(this)
+             ;
+ 
+@@ -428,6 +464,12 @@ public class PdfView extends PDFView implements OnPageChangeListener,OnLoadCompl
+         this.handlePage(this.page - 1);
+     }
+ 
++    /** Navegação vinda do JS (comando setNativePage): rola com animação até a página. */
++    public void setPageAnimated(int page) {
++        this.page = Math.max(page, 1);
++        this.jumpTo(this.page - 1, true);
++    }
++
+     public void setEnableRTL(boolean enableRTL) {
+         this.enableRTL = enableRTL;
+     }
+@@ -503,6 +545,14 @@ public class PdfView extends PDFView implements OnPageChangeListener,OnLoadCompl
+         this.singlePage = singlePage;
+     }
+ 
++    @Override
++    public void setNightMode(boolean nightMode) {
++        // Mesma assinatura de PDFView.setNightMode (chamado por Configurator.load()): precisa delegar
++        // ao super, senão o ColorMatrix de inversão nunca é aplicado.
++        this.nightMode = nightMode;
++        super.setNightMode(nightMode);
++    }
++
+     /**
+      * @see https://github.com/barteksc/AndroidPdfViewer/blob/master/android-pdf-viewer/src/main/java/com/github/barteksc/pdfviewer/link/DefaultLinkHandler.java
+      */
+diff --git a/node_modules/react-native-pdf/fabric/RNPDFPdfNativeComponent.js b/node_modules/react-native-pdf/fabric/RNPDFPdfNativeComponent.js
+index 43fea3b..a81863a 100644
+--- a/node_modules/react-native-pdf/fabric/RNPDFPdfNativeComponent.js
++++ b/node_modules/react-native-pdf/fabric/RNPDFPdfNativeComponent.js
+@@ -32,6 +32,7 @@
+    password: ?string,
+    onChange: ?BubblingEventHandler<ChangeEvent>,
+    singlePage: ?boolean,
++   nightMode: ?boolean,
+  |}>;
+ 
+  interface NativeCommands {
+diff --git a/node_modules/react-native-pdf/index.d.ts b/node_modules/react-native-pdf/index.d.ts
+index d8192b2..cde1e36 100644
+--- a/node_modules/react-native-pdf/index.d.ts
++++ b/node_modules/react-native-pdf/index.d.ts
+@@ -75,11 +75,12 @@ export interface PdfProps {
+     fitPolicy?: 0 | 1 | 2,
+     trustAllCerts?: boolean,
+     singlePage?: boolean,
++    nightMode?: boolean,
+     onLoadProgress?: (percent: number,) => void,
+     onLoadComplete?: (numberOfPages: number, path: string, size: {height: number, width: number}, tableContents?: TableContent[]) => void,
+     onPageChanged?: (page: number, numberOfPages: number) => void,
+     onError?: (error: PdfError) => void,
+-    onPageSingleTap?: (page: number, x: number, y: number) => void,
++    onPageSingleTap?: (page: number, x: number, y: number, hit?: { nx: number; ny: number; page: number }) => void,
+     onScaleChanged?: (scale: number) => void,
+     onPressLink?: (url: string) => void,
+     onTextSelectionChange?: (event: TextSelectionChangeEvent) => void,
+diff --git a/node_modules/react-native-pdf/index.js b/node_modules/react-native-pdf/index.js
+index 916faa5..08697a8 100644
+--- a/node_modules/react-native-pdf/index.js
++++ b/node_modules/react-native-pdf/index.js
+@@ -65,6 +65,7 @@ export default class Pdf extends Component {
+         fitPolicy: PropTypes.number,
+         trustAllCerts: PropTypes.bool,
+         singlePage: PropTypes.bool,
++        nightMode: PropTypes.bool,
+         onLoadComplete: PropTypes.func,
+         onPageChanged: PropTypes.func,
+         onError: PropTypes.func,
+@@ -103,6 +104,7 @@ export default class Pdf extends Component {
+         trustAllCerts: true,
+         usePDFKit: true,
+         singlePage: false,
++        nightMode: false,
+         onLoadProgress: (percent) => {
+         },
+         onLoadComplete: (numberOfPages, path) => {
+@@ -433,7 +435,10 @@ export default class Pdf extends Component {
+             } else if (message[0] === 'error') {
+                 this._onError(new Error(message[1]));
+             } else if (message[0] === 'pageSingleTap') {
+-                this.props.onPageSingleTap && this.props.onPageSingleTap(Number(message[1]), Number(message[2]), Number(message[3]));
++                // message[4] agrega "nx|ny|page" (ver splice acima) — coordenadas normalizadas do toque na página.
++                const hitParts = message[4] ? String(message[4]).split('|') : [];
++                const hit = hitParts.length === 3 ? { nx: Number(hitParts[0]), ny: Number(hitParts[1]), page: Number(hitParts[2]) } : undefined;
++                this.props.onPageSingleTap && this.props.onPageSingleTap(Number(message[1]), Number(message[2]), Number(message[3]), hit);
+             } else if (message[0] === 'scaleChanged') {
+                 this.props.onScaleChanged && this.props.onScaleChanged(Number(message[1]));
+             } else if (message[0] === 'linkPressed') {
