@@ -16,16 +16,19 @@ import Slider from '@react-native-community/slider';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import ActionSheet from '../components/ActionSheet';
+import ActionSheet, { SheetAction, SheetTile } from '../components/ActionSheet';
 import BookmarksModal from '../components/BookmarksModal';
 import OutlineModal from '../components/OutlineModal';
 import PagesGrid from '../components/PagesGrid';
 import { PdfLink, usePdfEngine } from '../components/PdfEngine';
 import PromptModal from '../components/PromptModal';
 import SearchModal from '../components/SearchModal';
+import { useToast } from '../components/Toast';
+import { IconButton } from '../components/ui';
+import { formatSize } from '../components/RecentItem';
 import { FitPolicy, useReaderPrefs } from '../prefs';
 import { useSettings } from '../settings';
-import { useTheme } from '../theme';
+import { fonts, useTheme } from '../theme';
 import { PdfDoc } from '../types';
 
 type Props = {
@@ -45,7 +48,7 @@ const JUMP_WINDOW_MS = 700;
 const FIT_LABEL: Record<FitPolicy, string> = {
   0: 'largura',
   1: 'altura',
-  2: 'página inteira',
+  2: 'página',
 };
 
 export default function ViewerScreen({
@@ -58,6 +61,7 @@ export default function ViewerScreen({
 }: Props) {
   const { settings } = useSettings();
   const t = useTheme();
+  const toast = useToast();
 
   useEffect(() => {
     if (!settings.keepAwake) return;
@@ -96,6 +100,7 @@ export default function ViewerScreen({
   const [gridOpen, setGridOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sliderPage, setSliderPage] = useState<number | null>(null);
+  const [linkToOpen, setLinkToOpen] = useState<string | null>(null);
 
   const pdfRef = useRef<React.ComponentRef<typeof Pdf>>(null);
   const linksCache = useRef(new Map<number, PdfLink[]>());
@@ -160,14 +165,14 @@ export default function ViewerScreen({
   );
 
   const toggleBookmark = useCallback(() => {
-    setBookmarks((prev) => {
-      const next = prev.includes(page)
-        ? prev.filter((b) => b !== page)
-        : [...prev, page].sort((a, b) => a - b);
-      onBookmarksChange(next);
-      return next;
-    });
-  }, [page, onBookmarksChange]);
+    const had = bookmarks.includes(page);
+    const next = had
+      ? bookmarks.filter((b) => b !== page)
+      : [...bookmarks, page].sort((a, b) => a - b);
+    setBookmarks(next);
+    onBookmarksChange(next);
+    toast(had ? `Marcador removido da pág. ${page}` : `Pág. ${page} marcada`);
+  }, [page, bookmarks, onBookmarksChange, toast]);
 
   const share = useCallback(async () => {
     if (await Sharing.isAvailableAsync()) {
@@ -197,10 +202,7 @@ export default function ViewerScreen({
         go();
         return;
       }
-      Alert.alert('Abrir link', url, [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Abrir', onPress: go },
-      ]);
+      setLinkToOpen(url);
     },
     [settings.confirmLinks],
   );
@@ -240,75 +242,68 @@ export default function ViewerScreen({
   const atEnd = !!total && page >= total;
   const nextFit = ((prefs.fitPolicy + 1) % 3) as FitPolicy;
 
-  const menuActions = useMemo(
+  const menuTiles = useMemo<SheetTile[]>(
     () => [
-      { label: 'Ir para página…', onPress: () => setGotoOpen(true) },
-      { label: 'Páginas (grade)', onPress: () => setGridOpen(true) },
-      { label: 'Sumário', onPress: () => setOutlineOpen(true) },
-      { label: 'Buscar texto…', onPress: () => setSearchOpen(true) },
+      { label: 'Buscar', icon: 'search', onPress: () => setSearchOpen(true) },
+      { label: 'Sumário', icon: 'list', onPress: () => setOutlineOpen(true) },
+      { label: 'Páginas', icon: 'grid', onPress: () => setGridOpen(true) },
       {
-        label: isBookmarked ? 'Remover marcador desta página' : 'Marcar esta página',
-        onPress: toggleBookmark,
+        label: bookmarks.length ? `Marcadores (${bookmarks.length})` : 'Marcadores',
+        icon: 'bookmark',
+        onPress: () => setBookmarksOpen(true),
       },
-      { label: `Marcadores (${bookmarks.length})`, onPress: () => setBookmarksOpen(true) },
-      {
-        label: prefs.horizontal ? 'Rolagem vertical' : 'Rolagem horizontal',
-        onPress: () => updatePrefs({ horizontal: !prefs.horizontal }),
-      },
-      {
-        label: `Ajustar à ${FIT_LABEL[nextFit]} (atual: ${FIT_LABEL[prefs.fitPolicy]})`,
-        onPress: () => updatePrefs({ fitPolicy: nextFit }),
-      },
-      {
-        label: prefs.night ? 'Desativar modo noturno' : 'Modo noturno',
-        onPress: () => updatePrefs({ night: !prefs.night }),
-      },
-      { label: 'Imprimir', onPress: print },
-      { label: 'Compartilhar', onPress: share },
     ],
-    [isBookmarked, toggleBookmark, bookmarks.length, prefs, nextFit, updatePrefs, print, share],
+    [bookmarks.length],
+  );
+
+  const menuActions = useMemo<SheetAction[]>(
+    () => [
+      {
+        label: 'Ir para página',
+        icon: 'hash',
+        value: `${page} / ${total || '?'}`,
+        onPress: () => setGotoOpen(true),
+      },
+      {
+        label: 'Rolagem',
+        icon: 'scroll',
+        value: prefs.horizontal ? 'horizontal' : 'vertical',
+        onPress: () => {
+          updatePrefs({ horizontal: !prefs.horizontal });
+          toast(`Rolagem ${prefs.horizontal ? 'vertical contínua' : 'horizontal paginada'}`);
+        },
+      },
+      {
+        label: 'Ajustar',
+        icon: 'fit',
+        value: FIT_LABEL[prefs.fitPolicy],
+        onPress: () => {
+          updatePrefs({ fitPolicy: nextFit });
+          toast(`Ajustar à ${FIT_LABEL[nextFit]}`);
+        },
+      },
+      {
+        label: 'Modo noturno',
+        icon: 'moon',
+        value: prefs.night ? 'ligado' : 'desligado',
+        onPress: () => {
+          updatePrefs({ night: !prefs.night });
+          toast(`Modo noturno ${prefs.night ? 'desligado' : 'ligado'}`);
+        },
+      },
+      { label: 'Imprimir', icon: 'print', onPress: print },
+      { label: 'Compartilhar', icon: 'share', onPress: share },
+    ],
+    [page, total, prefs, nextFit, updatePrefs, print, share, toast],
   );
 
   return (
-    <View
-      style={[styles.container, { backgroundColor: t.dark || prefs.night ? '#000' : '#e5e5e5' }]}
-    >
-      <StatusBar hidden={!chrome} />
-      {chrome && (
-        <View style={[styles.header, { backgroundColor: t.primary }]}>
-          <Pressable
-            onPress={onBack}
-            style={styles.headerBtn}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Voltar para a lista"
-          >
-            <Text style={styles.headerBtnText}>Voltar</Text>
-          </Pressable>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {doc.name}
-          </Text>
-          <Pressable
-            onPress={toggleBookmark}
-            style={styles.headerBtn}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={isBookmarked ? 'Remover marcador' : 'Marcar página'}
-            accessibilityState={{ selected: isBookmarked }}
-          >
-            <Text style={[styles.headerBtnText, styles.star]}>{isBookmarked ? '★' : '☆'}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setMenu(true)}
-            style={styles.headerBtn}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Mais opções"
-          >
-            <Text style={[styles.headerBtnText, styles.dots]}>⋮</Text>
-          </Pressable>
-        </View>
-      )}
+    <View style={[styles.container, { backgroundColor: prefs.night ? '#000' : t.readerBg }]}>
+      <StatusBar
+        hidden={!chrome}
+        barStyle={t.dark ? 'light-content' : 'dark-content'}
+        backgroundColor={t.bg}
+      />
 
       <View style={styles.body}>
         {prefsReady && (
@@ -322,7 +317,7 @@ export default function ViewerScreen({
             enablePaging={prefs.horizontal}
             fitPolicy={prefs.fitPolicy}
             nightMode={prefs.night}
-            style={[styles.pdf, { width }]}
+            style={[styles.pdf, { width, backgroundColor: 'transparent' }]}
             trustAllCerts={false}
             onPageSingleTap={onSingleTap}
             onPressLink={openLink}
@@ -350,24 +345,57 @@ export default function ViewerScreen({
           />
         )}
         {loading && (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={t.primary} />
+          <View style={[styles.loading, { backgroundColor: t.bg }]}>
+            <ActivityIndicator size="large" color={t.accent} />
+            <Text style={[styles.loadingText, { color: t.neutral[700] }]}>Abrindo documento…</Text>
           </View>
         )}
       </View>
 
       {chrome && (
-        <View style={[styles.footer, { backgroundColor: t.card, borderTopColor: t.border }]}>
+        <View style={[styles.header, { backgroundColor: t.bg, borderBottomColor: t.divider }]}>
+          <IconButton icon="back" size={46} onPress={onBack} label="Voltar para a lista" />
+          <View style={styles.headerText}>
+            <Text style={[styles.headerTitle, { color: t.text }]} numberOfLines={1}>
+              {doc.name}
+            </Text>
+            <Text style={[styles.headerSub, { color: t.neutral[700] }]} numberOfLines={1}>
+              {doc.protected ? 'protegido · ' : ''}
+              {formatSize(doc.size)}
+            </Text>
+          </View>
+          <IconButton
+            icon="bookmark"
+            size={46}
+            filled={isBookmarked}
+            color={isBookmarked ? t.accentRamp[700] : t.text}
+            bg={isBookmarked ? t.accentRamp[200] : undefined}
+            onPress={toggleBookmark}
+            label={isBookmarked ? 'Remover marcador' : 'Marcar página'}
+          />
+          <IconButton icon="more" size={46} onPress={() => setMenu(true)} label="Menu de ações" />
+        </View>
+      )}
+
+      {chrome && (
+        <View style={styles.footer} pointerEvents="box-none">
           <Pressable
-            onPress={() => goTo(page - 1)}
-            style={styles.navBtn}
-            disabled={atStart}
+            onPress={() => setGotoOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel="Página anterior"
+            accessibilityLabel="Ir para página"
+            style={[styles.counter, { backgroundColor: t.neutral[900] }]}
           >
-            <Text style={[styles.navText, { color: atStart ? t.border : t.primary }]}>{'<'}</Text>
+            <Text style={[styles.counterText, { color: t.neutral[100] }]}>
+              {sliderPage ?? page} / {total || '?'}
+            </Text>
           </Pressable>
-          <View style={styles.sliderWrap}>
+          <View style={[styles.navBar, { backgroundColor: t.bg }]}>
+            <IconButton
+              icon="chevronLeft"
+              onPress={() => goTo(page - 1)}
+              disabled={atStart}
+              label="Página anterior"
+            />
             <Slider
               style={styles.slider}
               minimumValue={1}
@@ -375,9 +403,9 @@ export default function ViewerScreen({
               step={1}
               value={page}
               disabled={!total}
-              minimumTrackTintColor={t.primary}
-              maximumTrackTintColor={t.border}
-              thumbTintColor={t.primary}
+              minimumTrackTintColor={t.accent}
+              maximumTrackTintColor={t.neutral[300]}
+              thumbTintColor={t.accent}
               onValueChange={(v) => setSliderPage(Math.round(v))}
               onSlidingComplete={(v) => {
                 setSliderPage(null);
@@ -385,52 +413,52 @@ export default function ViewerScreen({
               }}
               accessibilityLabel="Navegar por página"
             />
-            <Pressable
-              onPress={() => setGotoOpen(true)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Ir para página"
-            >
-              <Text style={[styles.pageText, { color: t.text }]}>
-                {sliderPage ?? page} / {total || '?'}
-              </Text>
-            </Pressable>
+            <IconButton
+              icon="chevronRight"
+              onPress={() => goTo(page + 1)}
+              disabled={atEnd}
+              label="Próxima página"
+            />
           </View>
-          <Pressable
-            onPress={() => goTo(page + 1)}
-            style={styles.navBtn}
-            disabled={atEnd}
-            accessibilityRole="button"
-            accessibilityLabel="Próxima página"
-          >
-            <Text style={[styles.navText, { color: atEnd ? t.border : t.primary }]}>{'>'}</Text>
-          </Pressable>
         </View>
       )}
 
-      <ActionSheet visible={menu} onClose={() => setMenu(false)} actions={menuActions} />
+      <ActionSheet
+        visible={menu}
+        onClose={() => setMenu(false)}
+        tiles={menuTiles}
+        actions={menuActions}
+      />
 
       <PromptModal
         visible={gotoOpen}
         title="Ir para página"
-        message={total ? `1 – ${total}` : undefined}
+        message={total ? `Digite um número entre 1 e ${total}.` : undefined}
         keyboardType="number-pad"
-        placeholder={String(page)}
+        placeholder={total ? `1 – ${total}` : String(page)}
         confirmLabel="Ir"
+        validate={(v) => {
+          const n = parseInt(v, 10);
+          if (Number.isNaN(n) || n < 1 || (total && n > total)) {
+            return `Fora do intervalo: use 1 a ${total || '?'}.`;
+          }
+          return undefined;
+        }}
         onCancel={() => setGotoOpen(false)}
         onConfirm={(v) => {
-          const n = parseInt(v, 10);
           setGotoOpen(false);
-          if (!Number.isNaN(n)) goTo(n);
+          goTo(parseInt(v, 10));
         }}
       />
 
       <PromptModal
         visible={askPassword}
-        title="PDF protegido"
-        message="Digite a senha do documento."
+        title="Documento protegido"
+        message="Este PDF pede senha. Ela fica só na memória enquanto o documento estiver aberto e nada é gravado em disco."
+        placeholder="Senha"
         secure
         confirmLabel="Abrir"
+        note={password ? 'Senha incorreta. Tente de novo.' : undefined}
         onCancel={() => {
           setAskPassword(false);
           onBack();
@@ -440,6 +468,20 @@ export default function ViewerScreen({
           setLoading(true);
           setInitialPage(page);
           setPassword(v);
+        }}
+      />
+
+      <PromptModal
+        visible={!!linkToOpen}
+        noField
+        title="Sair do app?"
+        message={`O PDF aponta para ${linkToOpen ?? ''} — abrir no navegador?`}
+        confirmLabel="Abrir"
+        onCancel={() => setLinkToOpen(null)}
+        onConfirm={() => {
+          const url = linkToOpen;
+          setLinkToOpen(null);
+          if (url) Linking.openURL(url).catch(() => Alert.alert('Link', 'Não foi possível abrir.'));
         }}
       />
 
@@ -459,17 +501,24 @@ export default function ViewerScreen({
         doc={doc}
         password={password}
         onSelect={goToAfterModal}
+        onOpenGrid={() => {
+          setOutlineOpen(false);
+          setGridOpen(true);
+        }}
         onClose={() => setOutlineOpen(false)}
       />
 
       <BookmarksModal
         visible={bookmarksOpen}
+        doc={doc}
+        password={password}
         bookmarks={bookmarks}
         onSelect={goToAfterModal}
         onRemove={(p) => {
           const next = bookmarks.filter((b) => b !== p);
           setBookmarks(next);
           onBookmarksChange(next);
+          toast('Marcador removido');
         }}
         onClose={() => setBookmarksOpen(false)}
       />
@@ -488,12 +537,6 @@ export default function ViewerScreen({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   body: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, height: 52 },
-  headerBtn: { paddingHorizontal: 8, paddingVertical: 6, minWidth: 48, alignItems: 'center' },
-  headerBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  star: { fontSize: 22 },
-  dots: { fontSize: 22 },
-  headerTitle: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
   pdf: { flex: 1 },
   loading: {
     position: 'absolute',
@@ -503,18 +546,52 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    gap: 16,
   },
-  footer: {
+  loadingText: { fontFamily: fonts.body, fontSize: 13.5 },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
+    gap: 4,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    opacity: 0.96,
   },
-  navBtn: { paddingHorizontal: 14, paddingVertical: 4 },
-  navText: { fontSize: 26, fontWeight: '700' },
-  sliderWrap: { flex: 1, alignItems: 'center' },
-  slider: { width: '100%', height: 28 },
-  pageText: { fontSize: 13, textAlign: 'center' },
+  headerText: { flex: 1, minWidth: 0, paddingHorizontal: 4 },
+  headerTitle: { fontFamily: fonts.bodySemi, fontSize: 14 },
+  headerSub: { fontFamily: fonts.body, fontSize: 11.5 },
+  footer: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 14,
+    alignItems: 'center',
+    gap: 10,
+  },
+  counter: {
+    minHeight: 36,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+  },
+  counterText: { fontFamily: fonts.heading, fontSize: 13 },
+  navBar: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    elevation: 4,
+    opacity: 0.97,
+  },
+  slider: { flex: 1, height: 44 },
 });

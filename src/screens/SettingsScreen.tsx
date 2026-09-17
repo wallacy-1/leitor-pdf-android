@@ -1,12 +1,15 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Application from 'expo-application';
-import ScreenModal from '../components/ScreenModal';
+import PromptModal from '../components/PromptModal';
 import { formatSize } from '../components/RecentItem';
+import ScreenModal from '../components/ScreenModal';
+import { useToast } from '../components/Toast';
+import { Kicker, PillButton, Segmented, Toggle } from '../components/ui';
 import { FitPolicy, useReaderPrefs } from '../prefs';
 import { ThemeMode, useSettings } from '../settings';
 import { clearCaches, removeAllDocs, storageUsage } from '../storage';
-import { useTheme } from '../theme';
+import { fonts, useTheme } from '../theme';
 
 type Props = {
   visible: boolean;
@@ -29,9 +32,11 @@ const FITS: { key: FitPolicy; label: string }[] = [
 
 export default function SettingsScreen({ visible, onClose, onDataChanged }: Props) {
   const t = useTheme();
+  const toast = useToast();
   const { settings, update } = useSettings();
   const { prefs, update: updatePrefs, reload: reloadPrefs } = useReaderPrefs();
   const [usage, setUsage] = useState({ documents: 0, caches: 0 });
+  const [confirm, setConfirm] = useState<'cache' | 'all' | null>(null);
 
   const refreshUsage = useCallback(() => setUsage(storageUsage()), []);
   // Ao abrir: recalcula uso de disco e relê prefs (o leitor pode ter mudado rolagem/noturno).
@@ -40,239 +45,207 @@ export default function SettingsScreen({ visible, onClose, onDataChanged }: Prop
     reloadPrefs();
   };
 
-  const onClearCaches = () => {
-    Alert.alert(
-      'Limpar caches',
-      'Remove texto extraído/OCR e miniaturas. Os documentos ficam; tudo é regenerado quando necessário.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Limpar',
-          onPress: async () => {
-            await clearCaches();
-            refreshUsage();
-            onDataChanged();
-          },
-        },
-      ],
-    );
-  };
-
-  const onRemoveAll = () => {
-    Alert.alert(
-      'Remover todos os documentos',
-      'Apaga todos os PDFs importados, marcadores e progresso. Não dá para desfazer.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover tudo',
-          style: 'destructive',
-          onPress: async () => {
-            await removeAllDocs();
-            refreshUsage();
-            onDataChanged();
-          },
-        },
-      ],
-    );
+  const onConfirm = async () => {
+    const which = confirm;
+    setConfirm(null);
+    if (which === 'cache') {
+      const freed = usage.caches;
+      await clearCaches();
+      toast(`Caches limpos · ${formatSize(freed)} liberados`);
+    } else if (which === 'all') {
+      await removeAllDocs();
+      toast('Lista apagada');
+    }
+    refreshUsage();
+    onDataChanged();
   };
 
   return (
     <ScreenModal visible={visible} title="Configurações" onClose={onClose} onShow={onShow}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Section title="Aparência" t={t}>
+        <View>
+          <Kicker style={styles.kicker}>Aparência</Kicker>
           <Segmented
             options={THEMES}
             value={settings.theme}
             onChange={(theme) => update({ theme })}
-            t={t}
           />
-          <Text style={[styles.hint, { color: t.textMuted }]}>
+          <Text style={[styles.hint, { color: t.neutral[700], marginTop: 8 }]}>
             {settings.theme === 'system'
-              ? `Seguindo o sistema (agora: ${t.dark ? 'escuro' : 'claro'}).`
+              ? `O sistema está em ${t.dark ? 'escuro' : 'claro'} agora.`
               : 'Tema fixo; o modo noturno do leitor é independente.'}
           </Text>
-        </Section>
+        </View>
 
-        <Section title="Leitura" t={t}>
-          <Row label="Rolagem horizontal" hint="Uma página por vez, deslizando de lado" t={t}>
-            <Switch
+        <View>
+          <Kicker style={styles.kickerTight}>Leitura</Kicker>
+          <Row label="Rolagem horizontal" hint="Uma página por vez, deslizando de lado">
+            <Toggle
+              label="Rolagem horizontal"
               value={prefs.horizontal}
-              onValueChange={(v) => updatePrefs({ horizontal: v })}
+              onChange={(v) => updatePrefs({ horizontal: v })}
             />
           </Row>
-          <Row label="Modo noturno" hint="Inverte as cores da página" t={t}>
-            <Switch value={prefs.night} onValueChange={(v) => updatePrefs({ night: v })} />
+          <Row label="Modo noturno" hint="Inverte as cores da página, independente do tema">
+            <Toggle
+              label="Modo noturno"
+              value={prefs.night}
+              onChange={(v) => updatePrefs({ night: v })}
+            />
           </Row>
-          <Row label="Manter tela ligada" hint="Enquanto um documento está aberto" t={t}>
-            <Switch value={settings.keepAwake} onValueChange={(v) => update({ keepAwake: v })} />
+          <Row label="Manter a tela ligada" hint="Enquanto um documento estiver aberto">
+            <Toggle
+              label="Manter a tela ligada"
+              value={settings.keepAwake}
+              onChange={(v) => update({ keepAwake: v })}
+            />
           </Row>
-          <Text style={[styles.label, { color: t.text, marginTop: 12 }]}>Ajustar página à</Text>
+          <Text style={[styles.label, { color: t.text, marginTop: 14, marginBottom: 8 }]}>
+            Ajuste da página
+          </Text>
           <Segmented
             options={FITS}
             value={prefs.fitPolicy}
             onChange={(fitPolicy) => updatePrefs({ fitPolicy })}
-            t={t}
           />
-        </Section>
+        </View>
 
-        <Section title="Busca e links" t={t}>
+        <View>
+          <Kicker style={styles.kickerTight}>Busca e links</Kicker>
           <Row
             label="OCR automático"
-            hint="Reconhece texto em páginas escaneadas na primeira busca (mais lento)"
-            t={t}
+            hint="Reconhece texto em páginas escaneadas na primeira busca"
           >
-            <Switch value={settings.ocr} onValueChange={(v) => update({ ocr: v })} />
-          </Row>
-          <Row label="Confirmar links externos" hint="Pergunta antes de abrir http(s)/mailto" t={t}>
-            <Switch
-              value={settings.confirmLinks}
-              onValueChange={(v) => update({ confirmLinks: v })}
+            <Toggle
+              label="OCR automático"
+              value={settings.ocr}
+              onChange={(v) => update({ ocr: v })}
             />
           </Row>
-          <Row label="Retomar último documento" hint="Ao abrir o app, volta para onde parou" t={t}>
-            <Switch value={settings.resumeLast} onValueChange={(v) => update({ resumeLast: v })} />
+          <Row label="Confirmar links externos" hint="Mostra o endereço antes de sair do app">
+            <Toggle
+              label="Confirmar links externos"
+              value={settings.confirmLinks}
+              onChange={(v) => update({ confirmLinks: v })}
+            />
           </Row>
-        </Section>
+          <Row label="Retomar último documento" hint="Ao abrir o app, volta direto para a leitura">
+            <Toggle
+              label="Retomar último documento"
+              value={settings.resumeLast}
+              onChange={(v) => update({ resumeLast: v })}
+            />
+          </Row>
+        </View>
 
-        <Section title="Armazenamento" t={t}>
-          <Row label="Documentos" t={t}>
-            <Text style={[styles.value, { color: t.textMuted }]}>
-              {formatSize(usage.documents)}
-            </Text>
-          </Row>
-          <Row label="Caches (texto, miniaturas)" t={t}>
-            <Text style={[styles.value, { color: t.textMuted }]}>{formatSize(usage.caches)}</Text>
-          </Row>
-          <Pressable
-            style={[styles.button, { borderColor: t.primary }]}
-            onPress={onClearCaches}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.buttonText, { color: t.primary }]}>Limpar caches</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.button, { borderColor: t.danger }]}
-            onPress={onRemoveAll}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.buttonText, { color: t.danger }]}>
-              Remover todos os documentos
-            </Text>
-          </Pressable>
-        </Section>
+        <View>
+          <Kicker style={styles.kicker}>Armazenamento</Kicker>
+          <View style={[styles.card, { backgroundColor: t.surface }]}>
+            <View style={styles.usageRow}>
+              <Text style={[styles.usage, { color: t.text }]}>Documentos</Text>
+              <Text style={[styles.usage, { color: t.text }]}>{formatSize(usage.documents)}</Text>
+            </View>
+            <View style={styles.usageRow}>
+              <Text style={[styles.usage, { color: t.neutral[700] }]}>
+                Caches (miniaturas, texto)
+              </Text>
+              <Text style={[styles.usage, { color: t.neutral[700] }]}>
+                {formatSize(usage.caches)}
+              </Text>
+            </View>
+            <View style={styles.cardBtns}>
+              <PillButton
+                label="Limpar caches"
+                variant="secondary"
+                onPress={() => setConfirm('cache')}
+                style={styles.smallBtn}
+                textStyle={styles.smallBtnText}
+              />
+              <PillButton
+                label="Remover tudo"
+                variant="secondary"
+                onPress={() => setConfirm('all')}
+                style={[styles.smallBtn, { borderColor: t.accentRamp[300] }]}
+                textStyle={[styles.smallBtnText, { color: t.accentRamp[700] }]}
+              />
+            </View>
+          </View>
+        </View>
 
-        <Section title="Sobre" t={t}>
-          <Row label="Versão" t={t}>
-            <Text style={[styles.value, { color: t.textMuted }]}>
-              {Application.nativeApplicationVersion ?? '?'} ({Application.nativeBuildVersion ?? '?'}
-              )
-            </Text>
-          </Row>
-          <Text style={[styles.hint, { color: t.textMuted }]}>
-            Leitura nativa (pdfium), busca e sumário via pdf.js, OCR offline (ML Kit). Nenhum dado
-            sai do aparelho.
+        <View>
+          <Kicker style={styles.kickerTight}>Sobre</Kicker>
+          <Text style={[styles.about, { color: t.neutral[700] }]}>
+            Versão {Application.nativeApplicationVersion ?? '?'} (
+            {Application.nativeBuildVersion ?? '?'}) · Nenhum dado sai do aparelho: não há conta,
+            nuvem, sincronização nem anúncios. Leitura nativa (pdfium), busca e sumário via pdf.js,
+            OCR offline (ML Kit).
           </Text>
-        </Section>
+        </View>
       </ScrollView>
+
+      <PromptModal
+        visible={confirm === 'cache'}
+        noField
+        title="Limpar caches"
+        message="Miniaturas e texto extraído serão gerados de novo na próxima vez. Progresso e marcadores ficam."
+        confirmLabel="Limpar"
+        onCancel={() => setConfirm(null)}
+        onConfirm={onConfirm}
+      />
+      <PromptModal
+        visible={confirm === 'all'}
+        noField
+        title="Remover todos os documentos"
+        message="Apaga a lista, o progresso de leitura e todos os marcadores. Os arquivos originais continuam no aparelho."
+        confirmLabel="Remover tudo"
+        onCancel={() => setConfirm(null)}
+        onConfirm={onConfirm}
+      />
     </ScreenModal>
-  );
-}
-
-type T = ReturnType<typeof useTheme>;
-
-function Section({ title, t, children }: { title: string; t: T; children: React.ReactNode }) {
-  return (
-    <View style={[styles.section, { backgroundColor: t.card }]}>
-      <Text style={[styles.sectionTitle, { color: t.primary }]}>{title}</Text>
-      {children}
-    </View>
   );
 }
 
 function Row({
   label,
   hint,
-  t,
   children,
 }: {
   label: string;
   hint?: string;
-  t: T;
   children: React.ReactNode;
 }) {
+  const t = useTheme();
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { borderBottomColor: t.divider }]}>
       <View style={styles.rowText}>
         <Text style={[styles.label, { color: t.text }]}>{label}</Text>
-        {hint ? <Text style={[styles.hint, { color: t.textMuted }]}>{hint}</Text> : null}
+        {hint ? <Text style={[styles.hint, { color: t.neutral[700] }]}>{hint}</Text> : null}
       </View>
       {children}
     </View>
   );
 }
 
-function Segmented<K extends string | number>({
-  options,
-  value,
-  onChange,
-  t,
-}: {
-  options: { key: K; label: string }[];
-  value: K;
-  onChange: (k: K) => void;
-  t: T;
-}) {
-  return (
-    <View style={[styles.segmented, { borderColor: t.border }]}>
-      {options.map((o) => {
-        const active = o.key === value;
-        return (
-          <Pressable
-            key={String(o.key)}
-            onPress={() => onChange(o.key)}
-            style={[styles.segment, active && { backgroundColor: t.primary }]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-          >
-            <Text style={[styles.segmentText, { color: active ? '#fff' : t.text }]}>{o.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 14 },
-  section: { borderRadius: 12, padding: 14 },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 12 },
-  rowText: { flex: 1 },
-  label: { fontSize: 15, fontWeight: '500' },
-  hint: { fontSize: 12, marginTop: 2 },
-  value: { fontSize: 14 },
-  segmented: {
+  content: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 30, gap: 22 },
+  kicker: { marginBottom: 10 },
+  kickerTight: { marginBottom: 6 },
+  row: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginTop: 4,
-  },
-  segment: { flex: 1, paddingVertical: 10, alignItems: 'center' },
-  segmentText: { fontSize: 14, fontWeight: '600' },
-  button: {
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 10,
+    gap: 14,
+    minHeight: 56,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
   },
-  buttonText: { fontSize: 15, fontWeight: '600' },
+  rowText: { flex: 1 },
+  label: { fontFamily: fonts.body, fontSize: 14.5 },
+  hint: { fontFamily: fonts.body, fontSize: 12, lineHeight: 16 },
+  card: { borderRadius: 22, padding: 16 },
+  usageRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  usage: { fontFamily: fonts.body, fontSize: 13.5 },
+  cardBtns: { flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' },
+  smallBtn: { minHeight: 44, paddingHorizontal: 16 },
+  smallBtnText: { fontSize: 13.5 },
+  about: { fontFamily: fonts.body, fontSize: 13.5, lineHeight: 19 },
 });
