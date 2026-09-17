@@ -1,66 +1,134 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions } from 'react-native';
-import { useTheme } from '../theme';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import Icon, { IconName } from './Icon';
+import { MenuRow } from './ui';
+import { fonts, useTheme } from '../theme';
 
 export type SheetAction = {
   label: string;
+  icon: IconName;
   onPress: () => void;
+  /** Valor atual mostrado à direita (ex.: "vertical"). */
+  value?: string;
   destructive?: boolean;
+};
+
+export type SheetTile = {
+  label: string;
+  icon: IconName;
+  onPress: () => void;
 };
 
 type Props = {
   visible: boolean;
   title?: string;
+  /** Atalhos em grade no topo (Buscar, Sumário…). */
+  tiles?: SheetTile[];
   actions: SheetAction[];
   onClose: () => void;
 };
 
-export default function ActionSheet({ visible, title, actions, onClose }: Props) {
+/** Folha inferior do protótipo: alça, grade de atalhos e linhas de ação. */
+export default function ActionSheet({ visible, title, tiles, actions, onClose }: Props) {
   const t = useTheme();
   const { height } = useWindowDimensions();
+  const run = (fn: () => void) => () => {
+    onClose();
+    fn();
+  };
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { backgroundColor: t.card, maxHeight: height * 0.85 }]}
-          onPress={() => {}}
-        >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.root}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        <View style={[styles.sheet, { backgroundColor: t.bg, maxHeight: height * 0.92 }]}>
+          <View style={[styles.handle, { backgroundColor: t.neutral[400] }]} />
           <ScrollView bounces={false}>
             {title ? (
-              <Text style={[styles.title, { color: t.textMuted }]} numberOfLines={1}>
+              <Text style={[styles.title, { color: t.text }]} numberOfLines={1}>
                 {title}
               </Text>
             ) : null}
+            {tiles?.length ? (
+              <View style={styles.tiles}>
+                {tiles.map((tile) => (
+                  <Pressable
+                    key={tile.label}
+                    accessibilityRole="button"
+                    onPress={run(tile.onPress)}
+                    style={({ pressed }) => [
+                      styles.tile,
+                      { backgroundColor: pressed ? t.accentRamp[200] : t.accentRamp[100] },
+                    ]}
+                  >
+                    <Icon name={tile.icon} color={t.accentRamp[800]} />
+                    <Text style={[styles.tileText, { color: t.accentRamp[800] }]}>
+                      {tile.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
             {actions.map((a) => (
-              <Pressable
+              <MenuRow
                 key={a.label}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.item, pressed && { backgroundColor: t.bg }]}
-                onPress={() => {
-                  onClose();
-                  a.onPress();
-                }}
-              >
-                <Text style={[styles.itemText, { color: a.destructive ? t.danger : t.text }]}>
-                  {a.label}
-                </Text>
-              </Pressable>
+                icon={a.icon}
+                label={a.label}
+                value={a.value}
+                onPress={run(a.onPress)}
+                color={a.destructive ? t.accentRamp[700] : undefined}
+              />
             ))}
-            <Pressable style={styles.item} onPress={onClose} accessibilityRole="button">
-              <Text style={[styles.itemText, styles.cancel, { color: t.textMuted }]}>Cancelar</Text>
-            </Pressable>
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: 16, paddingTop: 8 },
-  title: { fontSize: 13, paddingHorizontal: 20, paddingVertical: 8 },
-  item: { paddingVertical: 14, paddingHorizontal: 20 },
-  itemText: { fontSize: 16 },
-  cancel: { textAlign: 'center', fontWeight: '600' },
+  root: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(46,43,37,0.42)',
+  },
+  sheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    elevation: 12,
+  },
+  handle: { width: 44, height: 5, borderRadius: 999, alignSelf: 'center', marginBottom: 12 },
+  title: {
+    fontFamily: fonts.bodySemi,
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  tiles: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  tile: {
+    flex: 1,
+    minHeight: 88,
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  tileText: { fontFamily: fonts.body, fontSize: 11.5, textAlign: 'center' },
 });

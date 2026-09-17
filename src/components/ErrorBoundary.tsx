@@ -1,9 +1,22 @@
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Icon from './Icon';
+import { fonts } from '../theme';
 
 type Props = { children: React.ReactNode };
 type State = { error: Error | null };
+
+// Tokens do tema claro fixos: aqui não dá para depender de hooks/contexto (pode ser o que quebrou).
+const C = {
+  bg: '#f5ead8',
+  text: '#201e1d',
+  muted: '#645c50',
+  accent: '#c67139',
+  accent200: '#ffe1d0',
+  accent800: '#643312',
+  divider: 'rgba(32,30,29,0.16)',
+};
 
 /**
  * Última linha de defesa: exceção em render não derruba o app sem explicação.
@@ -34,40 +47,69 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     if (!this.state.error) return this.props.children;
     return (
       <View style={styles.root}>
+        <View style={styles.icon}>
+          <Icon name="alert" size={36} color={C.accent800} />
+        </View>
         <Text style={styles.title}>Algo deu errado</Text>
-        <Text style={styles.msg} numberOfLines={6}>
+        <Text style={styles.body}>
+          O app não conseguiu continuar. Seus documentos e marcadores continuam no aparelho. Se o
+          erro voltar, limpar os dados apaga a lista, não os arquivos originais.
+        </Text>
+        <Text style={styles.msg} numberOfLines={4}>
           {this.state.error.message}
         </Text>
-        <Pressable style={styles.btn} onPress={this.reset} accessibilityRole="button">
-          <Text style={styles.btnText}>Tentar novamente</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.btn, styles.btnDanger]}
-          onPress={this.clearData}
-          accessibilityRole="button"
-        >
-          <Text style={styles.btnText}>Limpar dados do app</Text>
-        </Pressable>
-        <Text style={styles.hint}>
-          Limpar remove a lista de recentes e preferências; os PDFs ficam no dispositivo.
-        </Text>
+        <View style={styles.row}>
+          <Pressable
+            style={[styles.btn, styles.btnPrimary]}
+            onPress={this.reset}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.btnText, styles.btnPrimaryText]}>Tentar novamente</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.btn, styles.btnSecondary]}
+            onPress={this.clearData}
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnText}>Limpar dados do app</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#121212', padding: 24, justifyContent: 'center' },
-  title: { color: '#fff', fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  msg: { color: '#bbb', fontSize: 14, marginBottom: 24, fontFamily: 'monospace' },
-  btn: {
-    backgroundColor: '#1976d2',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: 12,
+  root: {
+    flex: 1,
+    backgroundColor: C.bg,
+    paddingHorizontal: 24,
+    paddingVertical: 30,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 16,
   },
-  btnDanger: { backgroundColor: '#d32f2f' },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  hint: { color: '#888', fontSize: 12, textAlign: 'center', marginTop: 8 },
+  icon: {
+    width: 84,
+    height: 84,
+    borderRadius: 999,
+    backgroundColor: C.accent200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { fontFamily: fonts.heading, fontSize: 27, color: C.text },
+  body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: C.muted },
+  msg: { fontFamily: 'monospace', fontSize: 12, color: C.muted },
+  row: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  btn: {
+    minHeight: 48,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnPrimary: { backgroundColor: C.accent },
+  btnSecondary: { borderWidth: 1, borderColor: C.divider },
+  btnText: { fontFamily: fonts.heading, fontSize: 15, color: C.text },
+  btnPrimaryText: { color: C.bg },
 });

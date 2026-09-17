@@ -9,10 +9,11 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Icon from './Icon';
 import { usePdfEngine } from './PdfEngine';
 import ScreenModal from './ScreenModal';
 import { getPageThumbnail } from '../storage';
-import { useTheme } from '../theme';
+import { fonts, Theme, useTheme } from '../theme';
 import { PdfDoc } from '../types';
 
 type Props = {
@@ -27,6 +28,9 @@ type Props = {
 };
 
 const COLS = 3;
+const PAD = 14;
+const GAP = 12;
+const LABEL = 24;
 
 export default function PagesGrid({
   visible,
@@ -40,21 +44,27 @@ export default function PagesGrid({
 }: Props) {
   const t = useTheme();
   const { width } = useWindowDimensions();
-  const cell = Math.floor((width - 16 * 2 - 8 * (COLS - 1)) / COLS);
+  const cell = Math.floor((width - PAD * 2 - GAP * (COLS - 1)) / COLS);
+  const rowH = (cell * 4) / 3 + LABEL + GAP;
   const pages = Array.from({ length: total }, (_, i) => i + 1);
 
   return (
-    <ScreenModal visible={visible} title={`Páginas (${total})`} onClose={onClose}>
+    <ScreenModal
+      visible={visible}
+      title="Páginas"
+      onClose={onClose}
+      headerRight={
+        <Text style={[styles.counter, { color: t.neutral[700] }]}>
+          {current} / {total}
+        </Text>
+      }
+    >
       <FlatList
         data={pages}
         keyExtractor={(p) => String(p)}
         numColumns={COLS}
         initialScrollIndex={Math.max(0, Math.floor((current - 1) / COLS))}
-        getItemLayout={(_, index) => ({
-          length: cell * 1.41 + 30,
-          offset: (cell * 1.41 + 30) * index,
-          index,
-        })}
+        getItemLayout={(_, index) => ({ length: rowH, offset: rowH * index, index })}
         contentContainerStyle={styles.list}
         columnWrapperStyle={styles.row}
         windowSize={5}
@@ -67,9 +77,7 @@ export default function PagesGrid({
             active={item === current}
             bookmarked={bookmarks.includes(item)}
             onPress={() => onSelect(item)}
-            color={t.primary}
-            textColor={t.textMuted}
-            cardColor={t.card}
+            t={t}
           />
         )}
       />
@@ -85,23 +93,10 @@ type CellProps = {
   active: boolean;
   bookmarked: boolean;
   onPress: () => void;
-  color: string;
-  textColor: string;
-  cardColor: string;
+  t: Theme;
 };
 
-function PageCell({
-  doc,
-  page,
-  password,
-  size,
-  active,
-  bookmarked,
-  onPress,
-  color,
-  textColor,
-  cardColor,
-}: CellProps) {
+function PageCell({ doc, page, password, size, active, bookmarked, onPress, t }: CellProps) {
   const engine = usePdfEngine();
   const [uri, setUri] = useState<string | undefined>();
 
@@ -118,42 +113,56 @@ function PageCell({
   return (
     <Pressable
       onPress={onPress}
-      style={styles.cellWrap}
+      style={[styles.cellWrap, { width: size }]}
       accessibilityRole="button"
       accessibilityLabel={`Página ${page}`}
+      accessibilityState={{ selected: active }}
     >
       <View
         style={[
           styles.cell,
-          { width: size, height: size * 1.41, backgroundColor: cardColor },
-          active && { borderColor: color, borderWidth: 3 },
+          { width: size, height: (size * 4) / 3, backgroundColor: t.neutral[100] },
+          active && { borderColor: t.accent, borderWidth: 3 },
         ]}
       >
         {uri ? (
           <Image source={{ uri }} style={styles.img} resizeMode="contain" />
         ) : (
-          <ActivityIndicator color={color} />
+          <ActivityIndicator color={t.accent} />
         )}
-        {bookmarked && <Text style={styles.star}>★</Text>}
+        {bookmarked && (
+          <View style={styles.mark}>
+            <Icon name="bookmark" size={13} color={t.accent} filled />
+          </View>
+        )}
       </View>
-      <Text style={[styles.label, { color: active ? color : textColor }]}>{page}</Text>
+      <Text
+        style={[
+          styles.label,
+          active ? styles.labelActive : null,
+          { color: active ? t.accentRamp[700] : t.neutral[700] },
+        ]}
+      >
+        {page}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { padding: 16 },
-  row: { gap: 8, marginBottom: 8 },
-  cellWrap: { alignItems: 'center' },
+  counter: { fontFamily: fonts.body, fontSize: 12.5, marginRight: 12 },
+  list: { padding: PAD },
+  row: { gap: GAP, marginBottom: GAP },
+  cellWrap: { alignItems: 'stretch', gap: 6 },
   cell: {
-    borderRadius: 6,
+    borderRadius: 10,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#999',
+    elevation: 1,
   },
   img: { width: '100%', height: '100%' },
-  star: { position: 'absolute', top: 4, right: 6, color: '#f9a825', fontSize: 18 },
-  label: { marginTop: 4, fontSize: 12, fontWeight: '600', height: 18 },
+  mark: { position: 'absolute', top: 5, right: 5 },
+  label: { fontFamily: fonts.body, fontSize: 11.5, height: LABEL - 6 },
+  labelActive: { fontFamily: fonts.bodyBold },
 });

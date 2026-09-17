@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useTheme } from '../theme';
+import { fonts, useTheme } from '../theme';
 
 type Props = {
   visible: boolean;
@@ -20,10 +20,17 @@ type Props = {
   selectAll?: boolean;
   confirmLabel?: string;
   initialValue?: string;
+  /** Sem campo de texto: só confirmação. */
+  noField?: boolean;
+  /** Aviso em destaque abaixo do campo (erro de validação). */
+  note?: string;
+  /** Retorna uma mensagem para manter o diálogo aberto com aviso; vazio/undefined confirma. */
+  validate?: (value: string) => string | undefined;
   onConfirm: (value: string) => void;
   onCancel: () => void;
 };
 
+/** Diálogo do protótipo: cartão arredondado, campo em pílula, ações à direita. */
 export default function PromptModal({
   visible,
   title,
@@ -34,19 +41,35 @@ export default function PromptModal({
   selectAll,
   confirmLabel = 'OK',
   initialValue = '',
+  noField,
+  note,
+  validate,
   onConfirm,
   onCancel,
 }: Props) {
   const t = useTheme();
   const [value, setValue] = useState(initialValue);
+  const [localNote, setLocalNote] = useState<string | undefined>();
   const input = useRef<TextInput>(null);
 
   // Ao abrir: reseta o valor e foca (autoFocus dentro de Modal no Android nem sempre abre o teclado).
   const onShow = () => {
     setValue(initialValue);
+    setLocalNote(undefined);
     // Espera a animação do Modal terminar antes de focar (senão o teclado não abre no Android).
-    setTimeout(() => input.current?.focus(), 250);
+    if (!noField) setTimeout(() => input.current?.focus(), 250);
   };
+
+  const confirm = () => {
+    const err = validate?.(value);
+    if (err) {
+      setLocalNote(err);
+      return;
+    }
+    onConfirm(value);
+  };
+
+  const shownNote = localNote ?? note;
 
   return (
     <Modal
@@ -57,30 +80,50 @@ export default function PromptModal({
       onShow={onShow}
     >
       <View style={styles.backdrop}>
-        <View style={[styles.box, { backgroundColor: t.card }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
+        <View style={[styles.box, { backgroundColor: t.bg }]}>
           <Text style={[styles.title, { color: t.text }]}>{title}</Text>
-          {message ? <Text style={[styles.message, { color: t.textMuted }]}>{message}</Text> : null}
-          <TextInput
-            ref={input}
-            value={value}
-            onChangeText={setValue}
-            placeholder={placeholder}
-            placeholderTextColor={t.textMuted}
-            keyboardType={keyboardType}
-            secureTextEntry={secure}
-            selectTextOnFocus={selectAll}
-            onSubmitEditing={() => onConfirm(value)}
-            style={[
-              styles.input,
-              { color: t.text, backgroundColor: t.inputBg, borderColor: t.border },
-            ]}
-          />
+          {message ? (
+            <Text style={[styles.message, { color: t.neutral[700] }]}>{message}</Text>
+          ) : null}
+          {!noField && (
+            <TextInput
+              ref={input}
+              value={value}
+              onChangeText={setValue}
+              placeholder={placeholder}
+              placeholderTextColor={t.neutral[600]}
+              keyboardType={keyboardType}
+              secureTextEntry={secure}
+              selectTextOnFocus={selectAll}
+              onSubmitEditing={confirm}
+              style={[
+                styles.input,
+                { color: t.text, backgroundColor: t.neutral[100], borderColor: t.divider },
+              ]}
+            />
+          )}
+          {shownNote ? (
+            <Text style={[styles.note, { color: t.accentRamp[700] }]}>{shownNote}</Text>
+          ) : null}
           <View style={styles.row}>
-            <Pressable onPress={onCancel} style={styles.btn}>
-              <Text style={[styles.btnText, { color: t.textMuted }]}>Cancelar</Text>
+            <Pressable
+              onPress={onCancel}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.btn, pressed && { backgroundColor: t.neutral[200] }]}
+            >
+              <Text style={[styles.btnText, { color: t.text }]}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={() => onConfirm(value)} style={styles.btn}>
-              <Text style={[styles.btnText, { color: t.primary }]}>{confirmLabel}</Text>
+            <Pressable
+              onPress={confirm}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnOk,
+                { backgroundColor: pressed ? t.accentRamp[600] : t.accent },
+              ]}
+            >
+              <Text style={[styles.btnText, { color: t.onAccent }]}>{confirmLabel}</Text>
             </Pressable>
           </View>
         </View>
@@ -92,22 +135,31 @@ export default function PromptModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(46,43,37,0.46)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
-  box: { width: '100%', maxWidth: 400, borderRadius: 14, padding: 20 },
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
-  message: { fontSize: 14, marginBottom: 10 },
+  box: { width: '100%', maxWidth: 420, borderRadius: 28, padding: 22, elevation: 8 },
+  title: { fontFamily: fonts.heading, fontSize: 21, marginBottom: 8 },
+  message: { fontFamily: fonts.body, fontSize: 13.5, lineHeight: 19, marginBottom: 14 },
   input: {
+    height: 48,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    fontFamily: fonts.body,
+    fontSize: 15,
   },
-  row: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 14 },
-  btn: { paddingHorizontal: 14, paddingVertical: 8 },
-  btnText: { fontSize: 15, fontWeight: '600' },
+  note: { fontFamily: fonts.body, fontSize: 12.5, marginTop: 10 },
+  row: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 18 },
+  btn: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnOk: { paddingHorizontal: 20 },
+  btnText: { fontFamily: fonts.heading, fontSize: 14 },
 });
