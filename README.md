@@ -28,6 +28,7 @@ App Android em React Native (Expo) para leitura de PDFs.
 - `react-native-pdf-thumbnail` (miniaturas; patch em `patches/` para Kotlin recente)
 - `react-native-webview` + `pdfjs-dist@3` (extração de texto e render de página; build copiado para `android/app/src/main/assets/pdfjs` no `postinstall`)
 - `@react-native-ml-kit/text-recognition` (OCR offline, script latino; patch remove outros scripts para reduzir o APK)
+- `expo-font` (Caprasimo + Figtree embutidas em `assets/fonts/`, plugin em `app.json`) e `react-native-svg` (ícones de traço em `src/components/Icon.tsx`); tokens do design system em `src/theme.ts`
 - `@react-native-community/slider`, `expo-print`, `expo-document-picker`, `expo-file-system`, `expo-sharing`, `expo-keep-awake`, `react-native-safe-area-context`
 
 ## Rodar
