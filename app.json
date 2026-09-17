@@ -11,7 +11,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1976d2",
+        "backgroundColor": "#8c491a",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -21,10 +21,7 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": [
-            "DEFAULT",
-            "BROWSABLE"
-          ],
+          "category": ["DEFAULT", "BROWSABLE"],
           "data": [
             {
               "scheme": "content",
@@ -59,9 +56,9 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#1976d2",
+          "backgroundColor": "#8c491a",
           "dark": {
-            "backgroundColor": "#0d47a1"
+            "backgroundColor": "#643312"
           }
         }
       ],
@@ -74,6 +71,17 @@
             "enableShrinkResourcesInReleaseBuilds": true,
             "extraProguardRules": "# react-native-pdf: acesso por reflection a PDFView.pdfFile / PdfFile (patch de links)\n-keep class com.github.barteksc.pdfviewer.PDFView { *; }\n-keep class com.github.barteksc.pdfviewer.PdfFile { *; }\n-keep class org.wonday.pdf.** { *; }\n# pdfium (JNI)\n-keep class io.legere.pdfiumandroid.** { *; }\n# react-native-pdf-thumbnail (módulo legado por nome)\n-keep class org.songsterq.pdfthumbnail.** { *; }\n# ML Kit\n-keep class com.google.mlkit.** { *; }\n-keep class com.rnmlkit.** { *; }"
           }
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Caprasimo-Regular.ttf",
+            "./assets/fonts/Figtree-Regular.ttf",
+            "./assets/fonts/Figtree-SemiBold.ttf",
+            "./assets/fonts/Figtree-Bold.ttf"
+          ]
         }
       ]
     ]

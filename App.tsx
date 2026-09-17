@@ -3,6 +3,7 @@ import { Alert, Linking, StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { PdfEngineProvider, usePdfEngine } from './src/components/PdfEngine';
+import { ToastProvider } from './src/components/Toast';
 import HomeScreen from './src/screens/HomeScreen';
 import ViewerScreen from './src/screens/ViewerScreen';
 import {
@@ -31,7 +32,9 @@ export default function App() {
       <SettingsProvider>
         <SafeAreaProvider>
           <PdfEngineProvider>
-            <Main />
+            <ToastProvider>
+              <Main />
+            </ToastProvider>
           </PdfEngineProvider>
         </SafeAreaProvider>
       </SettingsProvider>
@@ -126,15 +129,15 @@ function Main() {
     setRefreshKey((k) => k + 1);
   }, []);
 
-  // Sem as configurações o tema ainda não foi aplicado: segura o primeiro frame para não piscar claro/escuro.
-  if (!settingsReady) return <View style={[styles.root, { backgroundColor: t.primary }]} />;
+  // Sem as configurações o tema ainda não foi aplicado: segura o primeiro frame na cor do splash.
+  if (!settingsReady) return <View style={[styles.root, { backgroundColor: t.accentRamp[700] }]} />;
 
   return (
     <SafeAreaView
-      style={[styles.root, { backgroundColor: chrome ? t.primary : '#000' }]}
+      style={[styles.root, { backgroundColor: chrome ? t.bg : '#000' }]}
       edges={chrome ? ['top', 'bottom'] : []}
     >
-      <StatusBar barStyle="light-content" backgroundColor={t.primary} />
+      <StatusBar barStyle={t.dark ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
       {current ? (
         <ViewerScreen
           key={current.id}
